@@ -25,6 +25,7 @@ import {
   type SeriesPoint,
 } from './api';
 import { getPalette, FONT_FAMILY, type Palette, type ThemeMode } from './theme';
+import doxaLogo from './assets/doxa-logo.png';
 
 const formatUsd = (value: number) =>
   new Intl.NumberFormat('en-US', {
@@ -413,7 +414,7 @@ export default function App() {
       <header className="topbar reveal" style={{ ['--stagger' as string]: '0' }}>
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">
-            <img src="/doxa-logo-light.png" alt="" width={28} height={28} />
+            <img src={doxaLogo} alt="" width={28} height={28} />
           </div>
           <div>
             <h1>Doxa Analytics</h1>
