@@ -413,12 +413,7 @@ export default function App() {
       <header className="topbar reveal" style={{ ['--stagger' as string]: '0' }}>
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">
-            <img
-              src={theme === 'dark' ? '/doxa-logo-dark.png' : '/doxa-logo-light.png'}
-              alt=""
-              width={28}
-              height={28}
-            />
+            <img src="/doxa-logo-light.png" alt="" width={28} height={28} />
           </div>
           <div>
             <h1>Doxa Analytics</h1>
