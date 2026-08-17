@@ -165,13 +165,15 @@ function MetricCard({
   label,
   value,
   hint,
+  stagger = 0,
 }: {
   label: string;
   value: string;
   hint?: string;
+  stagger?: number;
 }) {
   return (
-    <div className="metric-card">
+    <div className="metric-card reveal" style={{ ['--stagger' as string]: String(stagger) }}>
       <span>{label}</span>
       <strong>{value}</strong>
       {hint ? <em>{hint}</em> : null}
@@ -406,11 +408,15 @@ export default function App() {
   );
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
+    <div className={`app-shell ${loading && !summary ? 'is-loading' : 'is-ready'}`}>
+      <div className="atmosphere" aria-hidden="true" />
+      <header className="topbar reveal" style={{ ['--stagger' as string]: '0' }}>
         <div className="brand">
-          <h1>Doxa Analytics</h1>
-          <p>Onchain activity, product volume, and fee revenue</p>
+          <div className="brand-mark" aria-hidden="true" />
+          <div>
+            <h1>Doxa Analytics</h1>
+            <p>Onchain activity, product volume, and fee revenue</p>
+          </div>
         </div>
         <div className="topbar-actions">
           <select className="select" value={days} onChange={(event) => setDays(Number(event.target.value))}>
@@ -428,30 +434,30 @@ export default function App() {
       </header>
 
       <main className="content">
-        {loading ? <div className="empty-banner">Loading analytics…</div> : null}
-        {error ? <div className="error-banner">{error}</div> : null}
+        {loading && !summary ? <div className="empty-banner reveal pulse">Loading analytics…</div> : null}
+        {error ? <div className="error-banner reveal">{error}</div> : null}
 
-        <p className="section-label">Overview</p>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '1' }}>Overview</p>
         <section className="metrics-grid">
-          <MetricCard label="Total wallets" value={formatNumber(summary?.totals.wallets ?? 0)} hint={`Last ${days} days`} />
-          <MetricCard label="Transactions" value={formatNumber(summary?.totals.transactions ?? 0)} hint={`${formatNumber(summary?.totals.completedTransactions ?? 0)} completed`} />
-          <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" />
-          <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" />
-          <MetricCard label="Uptodown downloads" value={formatNumber(summary?.totals.uptodownDownloads ?? 0)} hint="Latest snapshot" />
+          <MetricCard label="Total wallets" value={formatNumber(summary?.totals.wallets ?? 0)} hint={`Last ${days} days`} stagger={2} />
+          <MetricCard label="Transactions" value={formatNumber(summary?.totals.transactions ?? 0)} hint={`${formatNumber(summary?.totals.completedTransactions ?? 0)} completed`} stagger={3} />
+          <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" stagger={4} />
+          <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" stagger={5} />
+          <MetricCard label="Uptodown downloads" value={formatNumber(summary?.totals.uptodownDownloads ?? 0)} hint="Latest snapshot" stagger={6} />
         </section>
 
-        <p className="section-label">Products</p>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '7' }}>Products</p>
         <section className="metrics-grid">
-          <MetricCard label="Swap volume" value={formatUsd(swap.volumeUsd)} hint={`${formatNumber(swap.count)} swaps`} />
-          <MetricCard label="Bridge volume" value={formatUsd(bridge.volumeUsd)} hint={`${formatNumber(bridge.count)} bridges`} />
-          <MetricCard label="Xchange buy" value={formatUsd(xchangeBuy.volumeUsd)} hint={`${formatNumber(xchangeBuy.count)} buys`} />
-          <MetricCard label="Xchange sell" value={formatUsd(xchangeSell.volumeUsd)} hint={`${formatNumber(xchangeSell.count)} sells`} />
-          <MetricCard label="Bills volume" value={formatUsd(bills.volumeUsd)} hint={`${formatNumber(bills.count)} bills`} />
+          <MetricCard label="Swap volume" value={formatUsd(swap.volumeUsd)} hint={`${formatNumber(swap.count)} swaps`} stagger={8} />
+          <MetricCard label="Bridge volume" value={formatUsd(bridge.volumeUsd)} hint={`${formatNumber(bridge.count)} bridges`} stagger={9} />
+          <MetricCard label="Xchange buy" value={formatUsd(xchangeBuy.volumeUsd)} hint={`${formatNumber(xchangeBuy.count)} buys`} stagger={10} />
+          <MetricCard label="Xchange sell" value={formatUsd(xchangeSell.volumeUsd)} hint={`${formatNumber(xchangeSell.count)} sells`} stagger={11} />
+          <MetricCard label="Bills volume" value={formatUsd(bills.volumeUsd)} hint={`${formatNumber(bills.count)} bills`} stagger={12} />
         </section>
 
-        <p className="section-label">Activity</p>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '13' }}>Activity</p>
         <section className="panel-grid">
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '14' }}>
             <div className="panel-header">
               <div>
                 <h2>Daily product activity</h2>
@@ -480,7 +486,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '15' }}>
             <div className="panel-header">
               <div>
                 <h2>Category mix</h2>
@@ -508,7 +514,7 @@ export default function App() {
         </section>
 
         <section className="panel-grid two-equal">
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '16' }}>
             <div className="panel-header">
               <div>
                 <h2>Daily product volume</h2>
@@ -537,7 +543,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '17' }}>
             <div className="panel-header">
               <div>
                 <h2>Volume and fees</h2>
@@ -564,9 +570,9 @@ export default function App() {
           </div>
         </section>
 
-        <p className="section-label">Product detail</p>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '18' }}>Product detail</p>
         <section className="panel-grid three">
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '19' }}>
             <div className="panel-header">
               <div>
                 <h2>Swap activity</h2>
@@ -590,7 +596,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '20' }}>
             <div className="panel-header">
               <div>
                 <h2>Bridge activity</h2>
@@ -614,7 +620,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '21' }}>
             <div className="panel-header">
               <div>
                 <h2>Bills activity</h2>
@@ -640,7 +646,7 @@ export default function App() {
         </section>
 
         <section className="panel-grid two-equal">
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '22' }}>
             <div className="panel-header">
               <div>
                 <h2>Xchange buy vs sell</h2>
@@ -672,7 +678,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '23' }}>
             <div className="panel-header">
               <div>
                 <h2>Xchange mix</h2>
@@ -699,9 +705,9 @@ export default function App() {
           </div>
         </section>
 
-        <p className="section-label">Network and distribution</p>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '24' }}>Network and distribution</p>
         <section className="panel-grid two-equal">
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '25' }}>
             <div className="panel-header">
               <div>
                 <h2>Network distribution</h2>
@@ -725,7 +731,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="panel">
+          <div className="panel reveal" style={{ ['--stagger' as string]: '26' }}>
             <div className="panel-header">
               <div>
                 <h2>Uptodown downloads</h2>
@@ -772,9 +778,9 @@ export default function App() {
           </div>
         </section>
 
-        <p className="section-label">Transactions</p>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '27' }}>Transactions</p>
         <section className="panel-grid">
-          <div className="panel full">
+          <div className="panel full reveal" style={{ ['--stagger' as string]: '28' }}>
             <div className="panel-header">
               <div>
                 <h2>Transaction records</h2>
