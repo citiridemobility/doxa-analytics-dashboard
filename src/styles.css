@@ -157,10 +157,39 @@ h3 {
 .brand-mark {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: 12px;
   flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 30% 28%, #ffe3a3 0%, var(--accent) 48%, color-mix(in srgb, var(--accent) 55%, #111827) 100%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 8px 20px color-mix(in srgb, var(--accent) 28%, transparent);
+  animation: mark-glow 4.5s ease-in-out infinite;
+}
+
+.brand-mark img {
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   display: block;
+  border-radius: 6px;
+}
+
+@keyframes mark-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+      0 8px 20px color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent),
+      0 10px 28px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
 }
 
 .brand h1 {
@@ -696,6 +725,7 @@ h3 {
 @media (prefers-reduced-motion: reduce) {
   .atmosphere,
   .atmosphere::after,
+  .brand-mark,
   .reveal,
   .pulse,
   .metric-card,

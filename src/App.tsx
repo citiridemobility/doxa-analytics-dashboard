@@ -412,13 +412,14 @@ export default function App() {
       <div className="atmosphere" aria-hidden="true" />
       <header className="topbar reveal" style={{ ['--stagger' as string]: '0' }}>
         <div className="brand">
-          <img
-            className="brand-mark"
-            src={theme === 'dark' ? '/doxa-logo-dark.png' : '/doxa-logo-light.png'}
-            alt="Doxa"
-            width={36}
-            height={36}
-          />
+          <div className="brand-mark" aria-hidden="true">
+            <img
+              src={theme === 'dark' ? '/doxa-logo-dark.png' : '/doxa-logo-light.png'}
+              alt=""
+              width={28}
+              height={28}
+            />
+          </div>
           <div>
             <h1>Doxa Analytics</h1>
             <p>Onchain activity, product volume, and fee revenue</p>
