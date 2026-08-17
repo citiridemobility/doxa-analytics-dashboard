@@ -795,37 +795,43 @@ export default function App() {
                   <table className="tx-table">
                     <thead>
                       <tr>
-                        <th>Timestamp</th>
-                        <th>Type</th>
-                        <th>Token / product</th>
-                        <th>Wallet</th>
-                        <th>Network</th>
-                        <th>Amount</th>
-                        <th>Amount (USD)</th>
-                        <th>Status</th>
-                        <th>Details</th>
+                        <th className="col-time">Time</th>
+                        <th className="col-type">Type</th>
+                        <th className="col-asset">Token / product</th>
+                        <th className="col-wallet">Wallet / network</th>
+                        <th className="col-amount">Amount</th>
+                        <th className="col-status">Status</th>
+                        <th className="col-details">Details</th>
                       </tr>
                     </thead>
                     <tbody>
                       {visibleTransactions.map((tx) => (
                         <tr key={tx.eventId}>
-                          <td>{formatTimestamp(tx.occurredAt)}</td>
-                          <td>
+                          <td className="col-time">{formatTimestamp(tx.occurredAt)}</td>
+                          <td className="col-type">
                             <span className="badge accent">
                               {tx.category === 'xchange' && tx.xchangeMode
                                 ? categoryLabel(`xchange-${tx.xchangeMode}`)
                                 : categoryLabel(tx.trackedCategory || tx.category)}
                             </span>
                           </td>
-                          <td>{formatTransactionAsset(tx)}</td>
-                          <td className="mono">{shorten(tx.walletAddress)}</td>
-                          <td>{tx.networkLabel}</td>
-                          <td>{tx.amountText || '—'}</td>
-                          <td className="mono">{formatUsd(tx.amountUsd)}</td>
-                          <td>
+                          <td className="col-asset">{formatTransactionAsset(tx)}</td>
+                          <td className="col-wallet">
+                            <div className="tx-cell-stack">
+                              <span className="mono">{shorten(tx.walletAddress)}</span>
+                              <span className="secondary">{tx.networkLabel}</span>
+                            </div>
+                          </td>
+                          <td className="col-amount">
+                            <div className="tx-cell-stack">
+                              <span>{tx.amountText || '—'}</span>
+                              <span className="secondary mono">{formatUsd(tx.amountUsd)}</span>
+                            </div>
+                          </td>
+                          <td className="col-status">
                             <span className="badge">{tx.status}</span>
                           </td>
-                          <td>
+                          <td className="col-details">
                             {tx.explorerUrl ? (
                               <a className="link" href={tx.explorerUrl} target="_blank" rel="noreferrer">
                                 View
