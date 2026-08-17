@@ -26,6 +26,9 @@ export type RecentTransaction = {
   explorerUrl: string | null;
   provider: string | null;
   reference: string | null;
+  assetLabel: string | null;
+  billType: 'airtime' | 'data' | 'electricity' | null;
+  summaryAmount: string | null;
 };
 
 export type DashboardSummary = {
@@ -103,6 +106,39 @@ const authHeaders = () => ({
   'x-doxa-analytics-secret': apiSecret(),
 });
 
+const toErrorMessage = (payload: unknown, status: number) => {
+  if (!payload || typeof payload !== 'object') {
+    return `Request failed (${status})`;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const nestedError = record.error;
+
+  if (typeof record.message === 'string' && record.message.trim()) {
+    return record.message;
+  }
+
+  if (typeof nestedError === 'string' && nestedError.trim()) {
+    return nestedError;
+  }
+
+  if (nestedError && typeof nestedError === 'object') {
+    const nested = nestedError as Record<string, unknown>;
+    if (typeof nested.message === 'string' && nested.message.trim()) {
+      return nested.message;
+    }
+    if (typeof nested.code === 'string' && nested.code.trim()) {
+      return nested.code.replace(/_/g, ' ');
+    }
+  }
+
+  if (typeof record.code === 'string' && record.code.trim()) {
+    return record.code.replace(/_/g, ' ');
+  }
+
+  return `Request failed (${status})`;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = apiUrl();
   if (!base) {
@@ -126,9 +162,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(
-      payload?.message || payload?.error || payload?.code || `Request failed (${response.status})`,
-    );
+    throw new Error(toErrorMessage(payload, response.status));
   }
 
   if (!payload?.data) {

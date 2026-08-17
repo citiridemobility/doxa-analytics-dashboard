@@ -78,6 +78,14 @@ const categoryLabel = (value?: string | null) => {
       return 'Xchange sell';
     case 'bills':
       return 'Bills';
+    case 'airtime':
+      return 'Airtime';
+    case 'data':
+      return 'Data';
+    case 'electricity':
+    case 'light':
+    case 'light bill':
+      return 'Electricity';
     case 'token-transfer':
       return 'Token transfer';
     case 'transaction':
@@ -99,6 +107,27 @@ const categoryLabel = (value?: string | null) => {
 };
 
 const emptyCategory = { count: 0, volumeUsd: 0, feeUsd: 0 };
+
+const formatTransactionAsset = (tx: {
+  category: string;
+  assetLabel?: string | null;
+  billType?: string | null;
+  summaryAmount?: string | null;
+  tokenSymbol?: string | null;
+  amountText?: string | null;
+}) => {
+  if (tx.assetLabel?.trim()) return tx.assetLabel.trim();
+  if (tx.summaryAmount?.trim()) return tx.summaryAmount.trim();
+
+  if (tx.category === 'bills') {
+    const billLabel = categoryLabel(tx.billType || 'bills');
+    return tx.tokenSymbol ? `${billLabel} · ${tx.tokenSymbol}` : billLabel;
+  }
+
+  if (tx.tokenSymbol?.trim()) return tx.tokenSymbol.trim();
+  if (tx.amountText?.trim()) return tx.amountText.trim();
+  return '—';
+};
 
 const axisTick = (colors: Palette, size = 11) => ({
   fill: colors.text.tertiary,
@@ -204,6 +233,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [manualDownloads, setManualDownloads] = useState('');
+  const [uptodownAppUrl, setUptodownAppUrl] = useState('');
   const [txFilter, setTxFilter] = useState<'all' | 'swap' | 'bridge' | 'xchange' | 'bills'>('all');
   const [txVisibleCount, setTxVisibleCount] = useState(25);
   const TX_PAGE_SIZE = 25;
@@ -323,10 +353,15 @@ export default function App() {
     setBusyAction('sync');
     setError(null);
     try {
-      await syncUptodownDownloads();
+      await syncUptodownDownloads(uptodownAppUrl.trim() || undefined);
       await loadDashboard(days);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Uptodown sync failed');
+      const message = err instanceof Error ? err.message : 'Uptodown sync failed';
+      setError(
+        /uptodown.?url.?missing|Set DOXA_UPTODOWN_APP_URL/i.test(message)
+          ? 'Uptodown sync needs an app page URL. Paste it below, or set DOXA_UPTODOWN_APP_URL on the backend.'
+          : message,
+      );
     } finally {
       setBusyAction(null);
     }
@@ -722,6 +757,14 @@ export default function App() {
               <button className="btn" type="button" onClick={() => void handleRecordDownloads()} disabled={busyAction !== null}>
                 {busyAction === 'record' ? 'Saving…' : 'Record count'}
               </button>
+            </div>
+            <div className="downloads-row" style={{ marginTop: 10 }}>
+              <input
+                className="input"
+                placeholder="Uptodown app URL (optional if backend env is set)"
+                value={uptodownAppUrl}
+                onChange={(event) => setUptodownAppUrl(event.target.value)}
+              />
               <button className="btn btn-accent" type="button" onClick={() => void handleSyncUptodown()} disabled={busyAction !== null}>
                 {busyAction === 'sync' ? 'Syncing…' : 'Sync Uptodown'}
               </button>
@@ -754,6 +797,7 @@ export default function App() {
                       <tr>
                         <th>Timestamp</th>
                         <th>Type</th>
+                        <th>Token / product</th>
                         <th>Wallet</th>
                         <th>Network</th>
                         <th>Amount</th>
@@ -773,6 +817,7 @@ export default function App() {
                                 : categoryLabel(tx.trackedCategory || tx.category)}
                             </span>
                           </td>
+                          <td>{formatTransactionAsset(tx)}</td>
                           <td className="mono">{shorten(tx.walletAddress)}</td>
                           <td>{tx.networkLabel}</td>
                           <td>{tx.amountText || '—'}</td>
