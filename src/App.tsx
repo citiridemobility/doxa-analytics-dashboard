@@ -444,8 +444,8 @@ export default function App() {
         <section className="metrics-grid">
           <MetricCard label="Total wallets" value={formatNumber(summary?.totals.wallets ?? 0)} hint={`Last ${days} days`} stagger={2} />
           <MetricCard label="Transactions" value={formatNumber(summary?.totals.transactions ?? 0)} hint={`${formatNumber(summary?.totals.completedTransactions ?? 0)} completed`} stagger={3} />
-          <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="Excludes failed & cancelled" stagger={4} />
-          <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Excludes failed & cancelled" stagger={5} />
+          <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" stagger={4} />
+          <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" stagger={5} />
           <MetricCard label="Uptodown downloads" value={formatNumber(summary?.totals.uptodownDownloads ?? 0)} hint="Latest snapshot" stagger={6} />
         </section>
 
