@@ -444,8 +444,8 @@ export default function App() {
         <section className="metrics-grid">
           <MetricCard label="Total wallets" value={formatNumber(summary?.totals.wallets ?? 0)} hint={`Last ${days} days`} stagger={2} />
           <MetricCard label="Transactions" value={formatNumber(summary?.totals.transactions ?? 0)} hint={`${formatNumber(summary?.totals.completedTransactions ?? 0)} completed`} stagger={3} />
-          <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" stagger={4} />
-          <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" stagger={5} />
+          <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="Excludes failed & cancelled" stagger={4} />
+          <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Excludes failed & cancelled" stagger={5} />
           <MetricCard label="Uptodown downloads" value={formatNumber(summary?.totals.uptodownDownloads ?? 0)} hint="Latest snapshot" stagger={6} />
         </section>
 
@@ -816,31 +816,31 @@ export default function App() {
                     <tbody>
                       {visibleTransactions.map((tx) => (
                         <tr key={tx.eventId}>
-                          <td className="col-time">{formatTimestamp(tx.occurredAt)}</td>
-                          <td className="col-type">
+                          <td className="col-time" data-label="Time">{formatTimestamp(tx.occurredAt)}</td>
+                          <td className="col-type" data-label="Type">
                             <span className="badge accent">
                               {tx.category === 'xchange' && tx.xchangeMode
                                 ? categoryLabel(`xchange-${tx.xchangeMode}`)
                                 : categoryLabel(tx.trackedCategory || tx.category)}
                             </span>
                           </td>
-                          <td className="col-asset">{formatTransactionAsset(tx)}</td>
-                          <td className="col-wallet">
+                          <td className="col-asset" data-label="Token / product">{formatTransactionAsset(tx)}</td>
+                          <td className="col-wallet" data-label="Wallet / network">
                             <div className="tx-cell-stack">
                               <span className="mono">{shorten(tx.walletAddress)}</span>
                               <span className="secondary">{tx.networkLabel}</span>
                             </div>
                           </td>
-                          <td className="col-amount">
+                          <td className="col-amount" data-label="Amount">
                             <div className="tx-cell-stack">
                               <span>{tx.amountText || '—'}</span>
                               <span className="secondary mono">{formatUsd(tx.amountUsd)}</span>
                             </div>
                           </td>
-                          <td className="col-status">
+                          <td className="col-status" data-label="Status">
                             <span className="badge">{tx.status}</span>
                           </td>
-                          <td className="col-details">
+                          <td className="col-details" data-label="Details">
                             {tx.explorerUrl ? (
                               <a className="link" href={tx.explorerUrl} target="_blank" rel="noreferrer">
                                 View
@@ -877,6 +877,15 @@ export default function App() {
           </div>
         </section>
       </main>
+      <footer className="site-footer reveal" style={{ ['--stagger' as string]: '29' }}>
+        <a className="link" href="/legal/privacy-policy.html" target="_blank" rel="noreferrer">
+          Privacy Policy
+        </a>
+        <span aria-hidden="true">·</span>
+        <a className="link" href="/legal/terms-of-service.html" target="_blank" rel="noreferrer">
+          Terms of Service
+        </a>
+      </footer>
     </div>
   );
 }
