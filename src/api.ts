@@ -41,6 +41,7 @@ export type DashboardSummary = {
     volumeUsd: number;
     feeUsd: number;
     uptodownDownloads: number;
+    androidDownloads?: number;
     swap: CategoryTotals;
     bridge: CategoryTotals;
     xchangeBuy: CategoryTotals;
@@ -176,7 +177,7 @@ export const fetchDashboard = (days: number) =>
   request<DashboardSummary>(`/dashboard?days=${days}`);
 
 export const syncUptodownDownloads = (appUrl?: string) =>
-  request<unknown>('/downloads/sync-uptodown', {
+  request<{ downloadCount?: number }>('/downloads/sync-uptodown', {
     method: 'POST',
     body: JSON.stringify(appUrl ? { appUrl } : {}),
   });

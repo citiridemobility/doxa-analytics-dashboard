@@ -7,7 +7,7 @@ Standalone dark/light analytics UI for Doxa Wallet metrics (wallets, transaction
 1. On an **existing** Supabase metrics DB, run only `backend/supabase/doxa_metrics_analytics_dashboard_migration.sql` (additive; keeps current rows).
 2. Set backend env:
    - `DOXA_ANALYTICS_DASHBOARD_SECRET`
-   - `DOXA_UPTODOWN_APP_URL` — skip until the app is on Uptodown
+   - `DOXA_UPTODOWN_APP_URL=https://doxa-wallet.en.uptodown.com/android`
 3. Copy `.env.example` to `.env` and set:
    - `VITE_ANALYTICS_API_URL`
    - `VITE_ANALYTICS_DASHBOARD_SECRET`

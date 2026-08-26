@@ -236,7 +236,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [manualDownloads, setManualDownloads] = useState('');
-  const [uptodownAppUrl, setUptodownAppUrl] = useState('');
+  const [uptodownAppUrl, setUptodownAppUrl] = useState('https://doxa-wallet.en.uptodown.com/android');
   const [txFilter, setTxFilter] = useState<'all' | 'swap' | 'bridge' | 'xchange' | 'bills'>('all');
   const [txVisibleCount, setTxVisibleCount] = useState(25);
   const TX_PAGE_SIZE = 25;
@@ -322,15 +322,78 @@ export default function App() {
     }));
   }, [summary]);
 
-  const uptodownHistory = useMemo(() => {
+  const androidDownloadHistory = useMemo(() => {
     if (!summary) return [];
-    return summary.downloads.history
-      .filter((row) => row.source === 'uptodown')
-      .map((row) => ({
-        day: shortDay(row.recordedAt.slice(0, 10)),
-        downloads: row.downloadCount,
-      }));
+
+    const snapshots = summary.downloads.history
+      .filter((row) => row.source === 'uptodown' || row.source === 'apk' || row.source === 'website')
+      .slice()
+      .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+
+    if (!snapshots.length) return [];
+
+    // Align to the same day axis as volume/fees, carrying the latest known count forward.
+    const dayKeys = summary.series.volumeUsdByDay.map((point) => point.day);
+    let snapshotIndex = 0;
+    let latestCount = 0;
+    let hasStarted = false;
+
+    return dayKeys.map((day) => {
+      while (
+        snapshotIndex < snapshots.length &&
+        snapshots[snapshotIndex].recordedAt.slice(0, 10) <= day
+      ) {
+        latestCount = snapshots[snapshotIndex].downloadCount;
+        hasStarted = true;
+        snapshotIndex += 1;
+      }
+
+      return {
+        day: shortDay(day),
+        downloads: hasStarted ? latestCount : 0,
+      };
+    });
   }, [summary]);
+
+  const uptodownLatest = summary?.downloads.latestBySource.find((row) => row.source === 'uptodown');
+  const androidDownloadTotal =
+    uptodownLatest?.downloadCount ??
+    summary?.totals.uptodownDownloads ??
+    summary?.totals.androidDownloads ??
+    0;
+
+  const handleSyncUptodown = async () => {
+    setBusyAction('sync');
+    setError(null);
+    try {
+      await syncUptodownDownloads(uptodownAppUrl.trim() || undefined);
+      await loadDashboard(days);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Uptodown sync failed');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleRecordDownloads = async () => {
+    const count = Number(manualDownloads.replace(/,/g, ''));
+    if (!Number.isInteger(count) || count < 0) {
+      setError('Enter a whole-number download count.');
+      return;
+    }
+
+    setBusyAction('record');
+    setError(null);
+    try {
+      await recordDownloadCount(count, 'uptodown');
+      setManualDownloads('');
+      await loadDashboard(days);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record downloads');
+    } finally {
+      setBusyAction(null);
+    }
+  };
 
   const filteredTransactions = useMemo(() => {
     const rows = summary?.recentTransactions || [];
@@ -351,44 +414,6 @@ export default function App() {
   );
 
   const canLoadMoreTransactions = txVisibleCount < filteredTransactions.length;
-
-  const handleSyncUptodown = async () => {
-    setBusyAction('sync');
-    setError(null);
-    try {
-      await syncUptodownDownloads(uptodownAppUrl.trim() || undefined);
-      await loadDashboard(days);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Uptodown sync failed';
-      setError(
-        /uptodown.?url.?missing|Set DOXA_UPTODOWN_APP_URL/i.test(message)
-          ? 'Uptodown sync needs an app page URL. Paste it below, or set DOXA_UPTODOWN_APP_URL on the backend.'
-          : message,
-      );
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const handleRecordDownloads = async () => {
-    const count = Number(manualDownloads.replace(/,/g, ''));
-    if (!Number.isInteger(count) || count < 0) {
-      setError('Enter a whole-number download count.');
-      return;
-    }
-
-    setBusyAction('record');
-    setError(null);
-    try {
-      await recordDownloadCount(count);
-      setManualDownloads('');
-      await loadDashboard(days);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record downloads');
-    } finally {
-      setBusyAction(null);
-    }
-  };
 
   const tooltipStyle = chartTooltipStyle(colors);
   const tick = axisTick(colors);
@@ -446,7 +471,7 @@ export default function App() {
           <MetricCard label="Transactions" value={formatNumber(summary?.totals.transactions ?? 0)} hint={`${formatNumber(summary?.totals.completedTransactions ?? 0)} completed`} stagger={3} />
           <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" stagger={4} />
           <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" stagger={5} />
-          <MetricCard label="Uptodown downloads" value={formatNumber(summary?.totals.uptodownDownloads ?? 0)} hint="Latest snapshot" stagger={6} />
+          <MetricCard label="Uptodown downloads" value={formatNumber(androidDownloadTotal)} hint="Latest Uptodown snapshot" stagger={6} />
         </section>
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '7' }}>Products</p>
@@ -738,25 +763,32 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <h2>Uptodown downloads</h2>
-                <p className="caption">Store install snapshots</p>
+                <p className="caption">{formatNumber(androidDownloadTotal)} total installs from Uptodown</p>
               </div>
             </div>
-            <div className="chart-wrap" style={{ height: 180 }}>
-              {uptodownHistory.length > 0 ? (
+            <div className="chart-wrap tall">
+              {androidDownloadHistory.some((row) => row.downloads > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={uptodownHistory}>
+                  <LineChart data={androidDownloadHistory}>
                     <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
                     <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
                     <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={tooltipStyle} />
-                    <Line type="monotone" dataKey="downloads" name="Downloads" stroke={colors.chart.primary} strokeWidth={2.25} dot={{ r: 3, fill: colors.chart.primary }} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatNumber(value)} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
+                    <Legend wrapperStyle={legendStyle(colors)} />
+                    <Line type="monotone" dataKey="downloads" name="Downloads" stroke={colors.chart.primary} strokeWidth={2.25} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <ChartEmpty message="No Uptodown snapshots yet. Record a count after upload." />
+                <ChartEmpty message="No Uptodown snapshots yet. Sync from the live Uptodown page or record a count." />
               )}
             </div>
             <div className="downloads-row">
+              <input
+                className="input downloads-url"
+                placeholder="Uptodown app URL"
+                value={uptodownAppUrl}
+                onChange={(event) => setUptodownAppUrl(event.target.value)}
+              />
               <input
                 className="input"
                 placeholder="Manual download count"
@@ -766,14 +798,6 @@ export default function App() {
               <button className="btn" type="button" onClick={() => void handleRecordDownloads()} disabled={busyAction !== null}>
                 {busyAction === 'record' ? 'Saving…' : 'Record count'}
               </button>
-            </div>
-            <div className="downloads-row" style={{ marginTop: 10 }}>
-              <input
-                className="input"
-                placeholder="Uptodown app URL (optional if backend env is set)"
-                value={uptodownAppUrl}
-                onChange={(event) => setUptodownAppUrl(event.target.value)}
-              />
               <button className="btn btn-accent" type="button" onClick={() => void handleSyncUptodown()} disabled={busyAction !== null}>
                 {busyAction === 'sync' ? 'Syncing…' : 'Sync Uptodown'}
               </button>

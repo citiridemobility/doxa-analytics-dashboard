@@ -267,6 +267,24 @@ h3 {
   box-shadow: none;
 }
 
+.downloads-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.downloads-row .input {
+  flex: 1 1 140px;
+  min-width: 140px;
+}
+
+.downloads-row .downloads-url {
+  flex: 2 1 220px;
+  min-width: 200px;
+}
+
 .select,
 .input {
   border: 1px solid var(--border);
@@ -490,20 +508,6 @@ h3 {
   border-color: color-mix(in srgb, var(--error) 40%, var(--border));
   color: var(--error);
   background: color-mix(in srgb, var(--error) 8%, var(--bg-secondary));
-}
-
-.downloads-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-  position: relative;
-  z-index: 1;
-}
-
-.downloads-row .input {
-  flex: 1;
-  min-width: 160px;
 }
 
 .tooltip-card {
@@ -888,13 +892,6 @@ h3 {
   .panel {
     padding: 14px;
     min-height: 0;
-  }
-
-  .downloads-row .input,
-  .downloads-row .btn,
-  .downloads-row .btn-accent {
-    flex: 1 1 100%;
-    min-width: 0;
   }
 
   .table-footer {
