@@ -18,7 +18,6 @@ import {
 } from 'recharts';
 import {
   fetchDashboard,
-  recordDownloadCount,
   syncUptodownDownloads,
   type DashboardSummary,
   type PieSlice,
@@ -235,8 +234,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [manualDownloads, setManualDownloads] = useState('');
-  const [uptodownAppUrl, setUptodownAppUrl] = useState('https://doxa-wallet.en.uptodown.com/android');
   const [txFilter, setTxFilter] = useState<'all' | 'swap' | 'bridge' | 'xchange' | 'bills'>('all');
   const [txVisibleCount, setTxVisibleCount] = useState(25);
   const TX_PAGE_SIZE = 25;
@@ -366,30 +363,10 @@ export default function App() {
     setBusyAction('sync');
     setError(null);
     try {
-      await syncUptodownDownloads(uptodownAppUrl.trim() || undefined);
+      await syncUptodownDownloads();
       await loadDashboard(days);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Uptodown sync failed');
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const handleRecordDownloads = async () => {
-    const count = Number(manualDownloads.replace(/,/g, ''));
-    if (!Number.isInteger(count) || count < 0) {
-      setError('Enter a whole-number download count.');
-      return;
-    }
-
-    setBusyAction('record');
-    setError(null);
-    try {
-      await recordDownloadCount(count, 'uptodown');
-      setManualDownloads('');
-      await loadDashboard(days);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record downloads');
     } finally {
       setBusyAction(null);
     }
@@ -779,25 +756,10 @@ export default function App() {
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <ChartEmpty message="No Uptodown snapshots yet. Sync from the live Uptodown page or record a count." />
+                <ChartEmpty message="No Uptodown snapshots yet. Tap Sync Uptodown to pull the latest count." />
               )}
             </div>
             <div className="downloads-row">
-              <input
-                className="input downloads-url"
-                placeholder="Uptodown app URL"
-                value={uptodownAppUrl}
-                onChange={(event) => setUptodownAppUrl(event.target.value)}
-              />
-              <input
-                className="input"
-                placeholder="Manual download count"
-                value={manualDownloads}
-                onChange={(event) => setManualDownloads(event.target.value)}
-              />
-              <button className="btn" type="button" onClick={() => void handleRecordDownloads()} disabled={busyAction !== null}>
-                {busyAction === 'record' ? 'Saving…' : 'Record count'}
-              </button>
               <button className="btn btn-accent" type="button" onClick={() => void handleSyncUptodown()} disabled={busyAction !== null}>
                 {busyAction === 'sync' ? 'Syncing…' : 'Sync Uptodown'}
               </button>
