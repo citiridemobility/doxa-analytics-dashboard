@@ -41,6 +41,8 @@ export type DashboardSummary = {
     volumeUsd: number;
     feeUsd: number;
     uptodownDownloads: number;
+    websiteDownloads?: number;
+    totalDownloads?: number;
     androidDownloads?: number;
     swap: CategoryTotals;
     bridge: CategoryTotals;

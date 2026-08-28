@@ -108,6 +108,66 @@ const categoryLabel = (value?: string | null) => {
 
 const emptyCategory = { count: 0, volumeUsd: 0, feeUsd: 0 };
 
+const WEBSITE_DOWNLOAD_SOURCES = ['apk', 'website'] as const;
+
+const sumTotalDownloads = (summary: DashboardSummary | null) => {
+  if (!summary) return 0;
+  if (summary.totals.totalDownloads != null) return summary.totals.totalDownloads;
+
+  const bySource = new Map(
+    summary.downloads.latestBySource.map((row) => [row.source, row.downloadCount]),
+  );
+  const website =
+    bySource.get('apk') ??
+    bySource.get('website') ??
+    summary.totals.websiteDownloads ??
+    0;
+
+  return (
+    (bySource.get('uptodown') ?? summary.totals.uptodownDownloads ?? 0) +
+    website +
+    (bySource.get('play_store') ?? 0) +
+    (bySource.get('app_store') ?? 0) +
+    (bySource.get('other') ?? 0)
+  );
+};
+
+const buildDownloadHistoryFromSources = (
+  summary: DashboardSummary | null,
+  sources: readonly string[],
+) => {
+  if (!summary) return [];
+
+  const sourceSet = new Set(sources);
+  const snapshots = summary.downloads.history
+    .filter((row) => sourceSet.has(row.source))
+    .slice()
+    .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+
+  if (!snapshots.length) return [];
+
+  const dayKeys = summary.series.volumeUsdByDay.map((point) => point.day);
+  let snapshotIndex = 0;
+  let latestCount = 0;
+  let hasStarted = false;
+
+  return dayKeys.map((day) => {
+    while (
+      snapshotIndex < snapshots.length &&
+      snapshots[snapshotIndex].recordedAt.slice(0, 10) <= day
+    ) {
+      latestCount = snapshots[snapshotIndex].downloadCount;
+      hasStarted = true;
+      snapshotIndex += 1;
+    }
+
+    return {
+      day: shortDay(day),
+      downloads: hasStarted ? latestCount : 0,
+    };
+  });
+};
+
 const formatTransactionAsset = (tx: {
   category: string;
   assetLabel?: string | null;
@@ -319,45 +379,31 @@ export default function App() {
     }));
   }, [summary]);
 
-  const androidDownloadHistory = useMemo(() => {
-    if (!summary) return [];
+  const uptodownDownloadHistory = useMemo(
+    () => buildDownloadHistoryFromSources(summary, ['uptodown']),
+    [summary],
+  );
 
-    const snapshots = summary.downloads.history
-      .filter((row) => row.source === 'uptodown' || row.source === 'apk' || row.source === 'website')
-      .slice()
-      .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
-
-    if (!snapshots.length) return [];
-
-    // Align to the same day axis as volume/fees, carrying the latest known count forward.
-    const dayKeys = summary.series.volumeUsdByDay.map((point) => point.day);
-    let snapshotIndex = 0;
-    let latestCount = 0;
-    let hasStarted = false;
-
-    return dayKeys.map((day) => {
-      while (
-        snapshotIndex < snapshots.length &&
-        snapshots[snapshotIndex].recordedAt.slice(0, 10) <= day
-      ) {
-        latestCount = snapshots[snapshotIndex].downloadCount;
-        hasStarted = true;
-        snapshotIndex += 1;
-      }
-
-      return {
-        day: shortDay(day),
-        downloads: hasStarted ? latestCount : 0,
-      };
-    });
-  }, [summary]);
+  const websiteDownloadHistory = useMemo(
+    () => buildDownloadHistoryFromSources(summary, WEBSITE_DOWNLOAD_SOURCES),
+    [summary],
+  );
 
   const uptodownLatest = summary?.downloads.latestBySource.find((row) => row.source === 'uptodown');
-  const androidDownloadTotal =
+  const uptodownDownloadTotal =
     uptodownLatest?.downloadCount ??
     summary?.totals.uptodownDownloads ??
-    summary?.totals.androidDownloads ??
     0;
+
+  const apkLatest = summary?.downloads.latestBySource.find((row) => row.source === 'apk');
+  const websiteLatest = summary?.downloads.latestBySource.find((row) => row.source === 'website');
+  const websiteDownloadTotal =
+    apkLatest?.downloadCount ??
+    websiteLatest?.downloadCount ??
+    summary?.totals.websiteDownloads ??
+    0;
+
+  const totalDownloadTotal = useMemo(() => sumTotalDownloads(summary), [summary]);
 
   const handleSyncUptodown = async () => {
     setBusyAction('sync');
@@ -448,19 +494,21 @@ export default function App() {
           <MetricCard label="Transactions" value={formatNumber(summary?.totals.transactions ?? 0)} hint={`${formatNumber(summary?.totals.completedTransactions ?? 0)} completed`} stagger={3} />
           <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" stagger={4} />
           <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" stagger={5} />
-          <MetricCard label="Uptodown downloads" value={formatNumber(androidDownloadTotal)} hint="Latest Uptodown snapshot" stagger={6} />
+          <MetricCard label="Total downloads" value={formatNumber(totalDownloadTotal)} hint="All platforms combined" stagger={6} />
+          <MetricCard label="Uptodown downloads" value={formatNumber(uptodownDownloadTotal)} hint="Latest Uptodown snapshot" stagger={7} />
+          <MetricCard label="Website downloads" value={formatNumber(websiteDownloadTotal)} hint="Direct APK via doxawallet.com" stagger={8} />
         </section>
 
-        <p className="section-label reveal" style={{ ['--stagger' as string]: '7' }}>Products</p>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '9' }}>Products</p>
         <section className="metrics-grid">
-          <MetricCard label="Swap volume" value={formatUsd(swap.volumeUsd)} hint={`${formatNumber(swap.count)} swaps`} stagger={8} />
-          <MetricCard label="Bridge volume" value={formatUsd(bridge.volumeUsd)} hint={`${formatNumber(bridge.count)} bridges`} stagger={9} />
-          <MetricCard label="Xchange buy" value={formatUsd(xchangeBuy.volumeUsd)} hint={`${formatNumber(xchangeBuy.count)} buys`} stagger={10} />
-          <MetricCard label="Xchange sell" value={formatUsd(xchangeSell.volumeUsd)} hint={`${formatNumber(xchangeSell.count)} sells`} stagger={11} />
-          <MetricCard label="Bills volume" value={formatUsd(bills.volumeUsd)} hint={`${formatNumber(bills.count)} bills`} stagger={12} />
+          <MetricCard label="Swap volume" value={formatUsd(swap.volumeUsd)} hint={`${formatNumber(swap.count)} swaps`} stagger={10} />
+          <MetricCard label="Bridge volume" value={formatUsd(bridge.volumeUsd)} hint={`${formatNumber(bridge.count)} bridges`} stagger={11} />
+          <MetricCard label="Xchange buy" value={formatUsd(xchangeBuy.volumeUsd)} hint={`${formatNumber(xchangeBuy.count)} buys`} stagger={12} />
+          <MetricCard label="Xchange sell" value={formatUsd(xchangeSell.volumeUsd)} hint={`${formatNumber(xchangeSell.count)} sells`} stagger={13} />
+          <MetricCard label="Bills volume" value={formatUsd(bills.volumeUsd)} hint={`${formatNumber(bills.count)} bills`} stagger={14} />
         </section>
 
-        <p className="section-label reveal" style={{ ['--stagger' as string]: '13' }}>Activity</p>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '15' }}>Activity</p>
         <section className="panel-grid">
           <div className="panel reveal" style={{ ['--stagger' as string]: '14' }}>
             <div className="panel-header">
@@ -740,19 +788,19 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <h2>Uptodown downloads</h2>
-                <p className="caption">{formatNumber(androidDownloadTotal)} total installs from Uptodown</p>
+                <p className="caption">{formatNumber(uptodownDownloadTotal)} total installs from Uptodown</p>
               </div>
             </div>
             <div className="chart-wrap tall">
-              {androidDownloadHistory.some((row) => row.downloads > 0) ? (
+              {uptodownDownloadHistory.some((row) => row.downloads > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={androidDownloadHistory}>
+                  <LineChart data={uptodownDownloadHistory}>
                     <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
                     <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
                     <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatNumber(value)} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
                     <Legend wrapperStyle={legendStyle(colors)} />
-                    <Line type="monotone" dataKey="downloads" name="Downloads" stroke={colors.chart.primary} strokeWidth={2.25} dot={false} />
+                    <Line type="monotone" dataKey="downloads" name="Uptodown" stroke={colors.chart.primary} strokeWidth={2.25} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
@@ -763,6 +811,31 @@ export default function App() {
               <button className="btn btn-accent" type="button" onClick={() => void handleSyncUptodown()} disabled={busyAction !== null}>
                 {busyAction === 'sync' ? 'Syncing…' : 'Sync Uptodown'}
               </button>
+            </div>
+          </div>
+
+          <div className="panel reveal" style={{ ['--stagger' as string]: '27' }}>
+            <div className="panel-header">
+              <div>
+                <h2>Website downloads</h2>
+                <p className="caption">{formatNumber(websiteDownloadTotal)} completed APK downloads via doxawallet.com</p>
+              </div>
+            </div>
+            <div className="chart-wrap tall">
+              {websiteDownloadHistory.some((row) => row.downloads > 0) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={websiteDownloadHistory}>
+                    <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
+                    <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatNumber(value)} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
+                    <Legend wrapperStyle={legendStyle(colors)} />
+                    <Line type="monotone" dataKey="downloads" name="Website" stroke={colors.chart.secondary} strokeWidth={2.25} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <ChartEmpty message="No website download history yet." />
+              )}
             </div>
           </div>
         </section>
