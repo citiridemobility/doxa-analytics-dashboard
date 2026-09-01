@@ -447,7 +447,7 @@ export default function App() {
   const bridge = summary?.totals.bridge || emptyCategory;
   const xchangeBuy = summary?.totals.xchangeBuy || emptyCategory;
   const xchangeSell = summary?.totals.xchangeSell || emptyCategory;
-  const bills = summary?.totals.bills || emptyCategory;
+  // const bills = summary?.totals.bills || emptyCategory;
 
   const hasActivity = activityBreakdown.some(
     (row) => row.swap + row.bridge + row.xchangeBuy + row.xchangeSell + row.bills > 0,
@@ -505,7 +505,6 @@ export default function App() {
           <MetricCard label="Bridge volume" value={formatUsd(bridge.volumeUsd)} hint={`${formatNumber(bridge.count)} bridges`} stagger={11} />
           <MetricCard label="Xchange buy" value={formatUsd(xchangeBuy.volumeUsd)} hint={`${formatNumber(xchangeBuy.count)} buys`} stagger={12} />
           <MetricCard label="Xchange sell" value={formatUsd(xchangeSell.volumeUsd)} hint={`${formatNumber(xchangeSell.count)} sells`} stagger={13} />
-          <MetricCard label="Bills volume" value={formatUsd(bills.volumeUsd)} hint={`${formatNumber(bills.count)} bills`} stagger={14} />
         </section>
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '15' }}>Activity</p>
