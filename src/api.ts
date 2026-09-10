@@ -40,7 +40,6 @@ export type DashboardSummary = {
     completedTransactions: number;
     volumeUsd: number;
     feeUsd: number;
-    playStoreDownloads?: number;
     uptodownDownloads: number;
     websiteDownloads?: number;
     totalDownloads?: number;
@@ -66,6 +65,11 @@ export type DashboardSummary = {
     xchangeBuyVolumeByDay: SeriesPoint[];
     xchangeSellVolumeByDay: SeriesPoint[];
     billsVolumeByDay: SeriesPoint[];
+    swapFeeByDay?: SeriesPoint[];
+    bridgeFeeByDay?: SeriesPoint[];
+    xchangeBuyFeeByDay?: SeriesPoint[];
+    xchangeSellFeeByDay?: SeriesPoint[];
+    billsFeeByDay?: SeriesPoint[];
     activityBreakdown: Array<{
       day: string;
       swap: number;
@@ -179,19 +183,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const fetchDashboard = (days: number) =>
   request<DashboardSummary>(`/dashboard?days=${days}`);
 
-export const syncPlayStoreDownloads = (appUrl?: string) =>
-  request<{ downloadCount?: number }>('/downloads/sync-play-store', {
-    method: 'POST',
-    body: JSON.stringify(appUrl ? { appUrl } : {}),
-  });
-
 export const syncUptodownDownloads = (appUrl?: string) =>
   request<{ downloadCount?: number }>('/downloads/sync-uptodown', {
     method: 'POST',
     body: JSON.stringify(appUrl ? { appUrl } : {}),
   });
 
-export const recordDownloadCount = (downloadCount: number, source = 'play_store') =>
+export const recordDownloadCount = (downloadCount: number, source = 'uptodown') =>
   request<unknown>('/downloads', {
     method: 'POST',
     body: JSON.stringify({ source, downloadCount }),

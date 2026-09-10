@@ -318,6 +318,72 @@ h3 {
   min-width: 148px;
 }
 
+.period-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-primary) 88%, var(--bg-secondary));
+}
+
+.period-tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 7px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background 0.2s var(--ease-soft),
+    color 0.2s var(--ease-soft);
+}
+
+.period-tabs button:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.period-tabs button.is-active {
+  background: var(--accent);
+  color: #111827;
+}
+
+.panel-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.product-dash-header {
+  align-items: flex-start;
+}
+
+.product-dash-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.metric-card.compact {
+  min-height: 0;
+  padding: 12px;
+  gap: 6px;
+}
+
+.metric-card.compact strong {
+  font-size: 18px;
+}
+
 .content {
   padding: 24px 28px 56px;
   display: flex;
@@ -747,6 +813,23 @@ h3 {
   .panel-header .select {
     width: 100%;
     min-width: 0;
+  }
+
+  .panel-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .period-tabs {
+    width: 100%;
+  }
+
+  .period-tabs button {
+    flex: 1 1 auto;
+  }
+
+  .product-dash-metrics {
+    grid-template-columns: 1fr;
   }
 
   .chart-wrap,

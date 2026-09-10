@@ -18,12 +18,23 @@ import {
 } from 'recharts';
 import {
   fetchDashboard,
-  syncPlayStoreDownloads,
   syncUptodownDownloads,
   type DashboardSummary,
   type PieSlice,
-  type SeriesPoint,
 } from './api';
+import { ProductDashboard } from './ProductDashboard';
+import {
+  PERIOD_VIEWS,
+  buildMonthOptions,
+  buildYearOptions,
+  filterByDayRange,
+  groupRowsByGrain,
+  resolvePeriodWindow,
+  sumSeries,
+  utcMonthKey,
+  utcYearKey,
+  type PeriodView,
+} from './period';
 import { getPalette, FONT_FAMILY, type Palette, type ThemeMode } from './theme';
 import doxaLogo from './assets/doxa-logo.png';
 
@@ -107,13 +118,12 @@ const categoryLabel = (value?: string | null) => {
   }
 };
 
-const emptyCategory = { count: 0, volumeUsd: 0, feeUsd: 0 };
+const HISTORY_DAYS = 365;
 
 const WEBSITE_DOWNLOAD_SOURCES = ['apk', 'website'] as const;
 
 const sumTotalDownloads = (summary: DashboardSummary | null) => {
   if (!summary) return 0;
-  if (summary.totals.totalDownloads != null) return summary.totals.totalDownloads;
 
   const bySource = new Map(
     summary.downloads.latestBySource.map((row) => [row.source, row.downloadCount]),
@@ -125,7 +135,6 @@ const sumTotalDownloads = (summary: DashboardSummary | null) => {
     0;
 
   return (
-    (bySource.get('play_store') ?? summary.totals.playStoreDownloads ?? 0) +
     (bySource.get('uptodown') ?? summary.totals.uptodownDownloads ?? 0) +
     website +
     (bySource.get('app_store') ?? 0) +
@@ -219,7 +228,6 @@ const productColors = (colors: Palette) => ({
   bridge: colors.chart.secondary,
   xchangeBuy: colors.chart.tertiary,
   xchangeSell: colors.chart.muted,
-  bills: colors.chart.soft,
 });
 
 function MetricCard({
@@ -277,25 +285,20 @@ function ChartEmpty({ message }: { message: string }) {
   return <div className="empty-banner">{message}</div>;
 }
 
-function mapSeries(points: SeriesPoint[] | undefined) {
-  return (points || []).map((point) => ({
-    day: shortDay(point.day),
-    value: point.value,
-  }));
-}
-
 export default function App() {
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('doxa-analytics-theme');
     if (saved === 'light' || saved === 'dark') return saved;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
-  const [days, setDays] = useState(30);
+  const [overviewView, setOverviewView] = useState<PeriodView>('monthly');
+  const [overviewMonth, setOverviewMonth] = useState(utcMonthKey);
+  const [overviewYear, setOverviewYear] = useState(utcYearKey);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [txFilter, setTxFilter] = useState<'all' | 'swap' | 'bridge' | 'xchange' | 'bills'>('all');
+  const [txFilter, setTxFilter] = useState<'all' | 'swap' | 'bridge' | 'xchange'>('all');
   const [txVisibleCount, setTxVisibleCount] = useState(25);
   const TX_PAGE_SIZE = 25;
 
@@ -317,11 +320,11 @@ export default function App() {
     document.body.style.color = colors.text.primary;
   }, [colors, theme]);
 
-  const loadDashboard = async (rangeDays = days) => {
+  const loadDashboard = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchDashboard(rangeDays);
+      const data = await fetchDashboard(HISTORY_DAYS);
       setSummary(data);
     } catch (err) {
       setSummary(null);
@@ -332,40 +335,88 @@ export default function App() {
   };
 
   useEffect(() => {
-    void loadDashboard(days);
-  }, [days]);
+    void loadDashboard();
+  }, []);
+
+  const overviewWindow = useMemo(
+    () => resolvePeriodWindow(overviewView, overviewMonth, overviewYear),
+    [overviewView, overviewMonth, overviewYear],
+  );
+
+  const historySpan = useMemo(() => {
+    const days = summary?.series.volumeUsdByDay || [];
+    return {
+      earliest: days[0]?.day ?? null,
+      latest: days[days.length - 1]?.day ?? null,
+    };
+  }, [summary]);
+
+  const monthOptions = useMemo(
+    () => buildMonthOptions(historySpan.earliest, historySpan.latest),
+    [historySpan],
+  );
+  const yearOptions = useMemo(
+    () => buildYearOptions(historySpan.earliest, historySpan.latest),
+    [historySpan],
+  );
+
+  const overviewTotals = useMemo(() => {
+    if (!summary) {
+      return { wallets: 0, transactions: 0, volumeUsd: 0, feeUsd: 0 };
+    }
+    const inWindow = <T extends { day: string; value: number }>(points: T[]) =>
+      filterByDayRange(points, overviewWindow.from, overviewWindow.to);
+    return {
+      wallets: sumSeries(inWindow(summary.series.walletsByDay)),
+      transactions: sumSeries(inWindow(summary.series.transactionsByDay)),
+      volumeUsd: sumSeries(inWindow(summary.series.volumeUsdByDay)),
+      feeUsd: sumSeries(inWindow(summary.series.feeUsdByDay)),
+    };
+  }, [summary, overviewWindow]);
 
   const activityBreakdown = useMemo(() => {
-    if (!summary?.series.activityBreakdown) return [];
-    return summary.series.activityBreakdown.map((row) => ({
-      ...row,
-      day: shortDay(row.day),
-    }));
-  }, [summary]);
+    const rows = summary?.series.activityBreakdown || [];
+    const source =
+      overviewView === 'monthly' || overviewView === 'yearly'
+        ? filterByDayRange(rows, overviewWindow.from, overviewWindow.to)
+        : rows;
+    return groupRowsByGrain(source, overviewView, ['swap', 'bridge', 'xchangeBuy', 'xchangeSell']);
+  }, [summary, overviewView, overviewWindow]);
 
   const moneySeries = useMemo(() => {
     if (!summary) return [];
-    return summary.series.volumeUsdByDay.map((point, index) => ({
-      day: shortDay(point.day),
+    const rows = summary.series.volumeUsdByDay.map((point, index) => ({
+      day: point.day,
       volumeUsd: point.value,
       feeUsd: summary.series.feeUsdByDay[index]?.value ?? 0,
     }));
-  }, [summary]);
+    const source =
+      overviewView === 'monthly' || overviewView === 'yearly'
+        ? filterByDayRange(rows, overviewWindow.from, overviewWindow.to)
+        : rows;
+    return groupRowsByGrain(source, overviewView, ['volumeUsd', 'feeUsd']);
+  }, [summary, overviewView, overviewWindow]);
 
   const productVolumeSeries = useMemo(() => {
     if (!summary) return [];
-    return summary.series.swapVolumeByDay.map((point, index) => ({
-      day: shortDay(point.day),
+    const rows = summary.series.swapVolumeByDay.map((point, index) => ({
+      day: point.day,
       swap: point.value,
       bridge: summary.series.bridgeVolumeByDay[index]?.value ?? 0,
       xchangeBuy: summary.series.xchangeBuyVolumeByDay[index]?.value ?? 0,
       xchangeSell: summary.series.xchangeSellVolumeByDay[index]?.value ?? 0,
-      bills: summary.series.billsVolumeByDay[index]?.value ?? 0,
     }));
-  }, [summary]);
+    const source =
+      overviewView === 'monthly' || overviewView === 'yearly'
+        ? filterByDayRange(rows, overviewWindow.from, overviewWindow.to)
+        : rows;
+    return groupRowsByGrain(source, overviewView, ['swap', 'bridge', 'xchangeBuy', 'xchangeSell']);
+  }, [summary, overviewView, overviewWindow]);
 
   const categoryPie = useMemo(() => {
-    const slices = summary?.breakdowns.categories || [];
+    const slices = (summary?.breakdowns.categories || []).filter(
+      (slice) => String(slice.name).toLowerCase() !== 'bills',
+    );
     const total = slices.reduce((sum, slice) => sum + slice.value, 0);
     return slices.map((slice) => ({ ...slice, total }));
   }, [summary]);
@@ -380,11 +431,6 @@ export default function App() {
     }));
   }, [summary]);
 
-  const playStoreDownloadHistory = useMemo(
-    () => buildDownloadHistoryFromSources(summary, ['play_store']),
-    [summary],
-  );
-
   const uptodownDownloadHistory = useMemo(
     () => buildDownloadHistoryFromSources(summary, ['uptodown']),
     [summary],
@@ -395,12 +441,7 @@ export default function App() {
     [summary],
   );
 
-  const playStoreLatest = summary?.downloads.latestBySource.find((row) => row.source === 'play_store');
   const uptodownLatest = summary?.downloads.latestBySource.find((row) => row.source === 'uptodown');
-  const playStoreDownloadTotal =
-    playStoreLatest?.downloadCount ??
-    summary?.totals.playStoreDownloads ??
-    0;
   const uptodownDownloadTotal =
     uptodownLatest?.downloadCount ??
     summary?.totals.uptodownDownloads ??
@@ -416,25 +457,12 @@ export default function App() {
 
   const totalDownloadTotal = useMemo(() => sumTotalDownloads(summary), [summary]);
 
-  const handleSyncPlayStore = async () => {
-    setBusyAction('sync-play');
-    setError(null);
-    try {
-      await syncPlayStoreDownloads();
-      await loadDashboard(days);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Play Store sync failed');
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
   const handleSyncUptodown = async () => {
     setBusyAction('sync-uptodown');
     setError(null);
     try {
       await syncUptodownDownloads();
-      await loadDashboard(days);
+      await loadDashboard();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Uptodown sync failed');
     } finally {
@@ -444,16 +472,20 @@ export default function App() {
 
   const filteredTransactions = useMemo(() => {
     const rows = summary?.recentTransactions || [];
-    if (txFilter === 'all') return rows;
+    const inWindow = rows.filter((row) => {
+      const day = row.occurredAt.slice(0, 10);
+      return day >= overviewWindow.from && day <= overviewWindow.to;
+    });
+    if (txFilter === 'all') return inWindow;
     if (txFilter === 'xchange') {
-      return rows.filter((row) => row.category === 'xchange' || row.trackedCategory?.startsWith('xchange'));
+      return inWindow.filter((row) => row.category === 'xchange' || row.trackedCategory?.startsWith('xchange'));
     }
-    return rows.filter((row) => row.category === txFilter || row.trackedCategory === txFilter);
-  }, [summary, txFilter]);
+    return inWindow.filter((row) => row.category === txFilter || row.trackedCategory === txFilter);
+  }, [summary, txFilter, overviewWindow]);
 
   useEffect(() => {
     setTxVisibleCount(TX_PAGE_SIZE);
-  }, [txFilter, days, summary?.generatedAt]);
+  }, [txFilter, overviewWindow.from, overviewWindow.to, summary?.generatedAt]);
 
   const visibleTransactions = useMemo(
     () => filteredTransactions.slice(0, txVisibleCount),
@@ -467,17 +499,11 @@ export default function App() {
   const products = productColors(colors);
   const series = colors.chart.series;
 
-  const swap = summary?.totals.swap || emptyCategory;
-  const bridge = summary?.totals.bridge || emptyCategory;
-  const xchangeBuy = summary?.totals.xchangeBuy || emptyCategory;
-  const xchangeSell = summary?.totals.xchangeSell || emptyCategory;
-  // const bills = summary?.totals.bills || emptyCategory;
-
   const hasActivity = activityBreakdown.some(
-    (row) => row.swap + row.bridge + row.xchangeBuy + row.xchangeSell + row.bills > 0,
+    (row) => Number(row.swap) + Number(row.bridge) + Number(row.xchangeBuy) + Number(row.xchangeSell) > 0,
   );
   const hasProductVolume = productVolumeSeries.some(
-    (row) => row.swap + row.bridge + row.xchangeBuy + row.xchangeSell + row.bills > 0,
+    (row) => Number(row.swap) + Number(row.bridge) + Number(row.xchangeBuy) + Number(row.xchangeSell) > 0,
   );
 
   return (
@@ -494,12 +520,50 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <select className="select" value={days} onChange={(event) => setDays(Number(event.target.value))}>
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={90}>Last 90 days</option>
+          <div className="period-tabs" role="tablist" aria-label="Overview time range">
+            {PERIOD_VIEWS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="tab"
+                aria-selected={overviewView === option.id}
+                className={overviewView === option.id ? 'is-active' : undefined}
+                onClick={() => setOverviewView(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <select
+            className="select"
+            value={monthOptions.some((option) => option.value === overviewMonth) ? overviewMonth : monthOptions[0]?.value || overviewMonth}
+            onChange={(event) => {
+              setOverviewMonth(event.target.value);
+              setOverviewView('monthly');
+            }}
+            aria-label="Overview month"
+          >
+            {monthOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
-          <button className="btn" type="button" onClick={() => void loadDashboard(days)} disabled={loading}>
+          {overviewView === 'yearly' ? (
+            <select
+              className="select"
+              value={yearOptions.some((option) => option.value === overviewYear) ? overviewYear : yearOptions[0]?.value}
+              onChange={(event) => setOverviewYear(event.target.value)}
+              aria-label="Overview year"
+            >
+              {yearOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <button className="btn" type="button" onClick={() => void loadDashboard()} disabled={loading}>
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>
           <button className="btn" type="button" onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}>
@@ -514,24 +578,67 @@ export default function App() {
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '1' }}>Overview</p>
         <section className="metrics-grid">
-          <MetricCard label="Total wallets" value={formatNumber(summary?.totals.wallets ?? 0)} hint={`Last ${days} days`} stagger={2} />
-          <MetricCard label="Transactions" value={formatNumber(summary?.totals.transactions ?? 0)} hint={`${formatNumber(summary?.totals.completedTransactions ?? 0)} completed`} stagger={3} />
-          <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" stagger={4} />
-          <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" stagger={5} />
+          <MetricCard label="Total wallets" value={formatNumber(overviewTotals.wallets)} hint={overviewWindow.caption} stagger={2} />
+          <MetricCard label="Transactions" value={formatNumber(overviewTotals.transactions)} hint={overviewWindow.caption} stagger={3} />
+          <MetricCard label="Total volume" value={formatUsd(overviewTotals.volumeUsd)} hint="All products" stagger={4} />
+          <MetricCard label="Fees generated" value={formatUsd(overviewTotals.feeUsd)} hint="Platform fees" stagger={5} />
         </section>
         <section className="metrics-grid">
-          <MetricCard label="Total downloads" value={formatNumber(totalDownloadTotal)} hint="Play Store + Uptodown + website" stagger={6} />
-          <MetricCard label="Play Store downloads" value={formatNumber(playStoreDownloadTotal)} hint="Google Play listing" stagger={7} />
-          <MetricCard label="Uptodown downloads" value={formatNumber(uptodownDownloadTotal)} hint="Latest Uptodown snapshot" stagger={8} />
-          <MetricCard label="Website downloads" value={formatNumber(websiteDownloadTotal)} hint="Historical APK via doxawallet.com" stagger={9} />
+          <MetricCard label="Total downloads" value={formatNumber(totalDownloadTotal)} hint="Uptodown + website" stagger={6} />
+          <MetricCard label="Uptodown downloads" value={formatNumber(uptodownDownloadTotal)} hint="Latest Uptodown snapshot" stagger={7} />
+          <MetricCard label="Website downloads" value={formatNumber(websiteDownloadTotal)} hint="Historical APK via doxawallet.com" stagger={8} />
         </section>
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '9' }}>Products</p>
-        <section className="metrics-grid">
-          <MetricCard label="Swap volume" value={formatUsd(swap.volumeUsd)} hint={`${formatNumber(swap.count)} swaps`} stagger={10} />
-          <MetricCard label="Bridge volume" value={formatUsd(bridge.volumeUsd)} hint={`${formatNumber(bridge.count)} bridges`} stagger={11} />
-          <MetricCard label="Xchange buy" value={formatUsd(xchangeBuy.volumeUsd)} hint={`${formatNumber(xchangeBuy.count)} buys`} stagger={12} />
-          <MetricCard label="Xchange sell" value={formatUsd(xchangeSell.volumeUsd)} hint={`${formatNumber(xchangeSell.count)} sells`} stagger={13} />
+        <section className="panel-grid two-equal">
+          <ProductDashboard
+            title="Swap"
+            countNoun="Swaps"
+            countSeries={summary?.series.swapByDay || []}
+            volumeSeries={summary?.series.swapVolumeByDay || []}
+            feeSeries={summary?.series.swapFeeByDay || []}
+            color={products.swap}
+            colors={colors}
+            earliestDay={historySpan.earliest}
+            latestDay={historySpan.latest}
+            stagger={10}
+          />
+          <ProductDashboard
+            title="Bridge"
+            countNoun="Bridges"
+            countSeries={summary?.series.bridgeByDay || []}
+            volumeSeries={summary?.series.bridgeVolumeByDay || []}
+            feeSeries={summary?.series.bridgeFeeByDay || []}
+            color={products.bridge}
+            colors={colors}
+            earliestDay={historySpan.earliest}
+            latestDay={historySpan.latest}
+            stagger={11}
+          />
+          <ProductDashboard
+            title="Xchange buy"
+            countNoun="Buys"
+            countSeries={summary?.series.xchangeBuyByDay || []}
+            volumeSeries={summary?.series.xchangeBuyVolumeByDay || []}
+            feeSeries={summary?.series.xchangeBuyFeeByDay || []}
+            color={products.xchangeBuy}
+            colors={colors}
+            earliestDay={historySpan.earliest}
+            latestDay={historySpan.latest}
+            stagger={12}
+          />
+          <ProductDashboard
+            title="Xchange sell"
+            countNoun="Sells"
+            countSeries={summary?.series.xchangeSellByDay || []}
+            volumeSeries={summary?.series.xchangeSellVolumeByDay || []}
+            feeSeries={summary?.series.xchangeSellFeeByDay || []}
+            color={products.xchangeSell}
+            colors={colors}
+            earliestDay={historySpan.earliest}
+            latestDay={historySpan.latest}
+            stagger={13}
+          />
         </section>
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '15' }}>Activity</p>
@@ -539,8 +646,8 @@ export default function App() {
           <div className="panel reveal" style={{ ['--stagger' as string]: '14' }}>
             <div className="panel-header">
               <div>
-                <h2>Daily product activity</h2>
-                <p className="caption">Swap · Bridge · Xchange · Bills</p>
+                <h2>Product activity</h2>
+                <p className="caption">{overviewWindow.caption}</p>
               </div>
             </div>
             <div className="chart-wrap tall">
@@ -548,15 +655,14 @@ export default function App() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={activityBreakdown}>
                     <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} />
                     <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
                     <Tooltip contentStyle={tooltipStyle} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
                     <Legend wrapperStyle={legendStyle(colors)} formatter={(value) => categoryLabel(String(value))} />
                     <Bar dataKey="swap" name="Swap" stackId="activity" fill={products.swap} />
                     <Bar dataKey="bridge" name="Bridge" stackId="activity" fill={products.bridge} />
                     <Bar dataKey="xchangeBuy" name="Xchange buy" stackId="activity" fill={products.xchangeBuy} />
-                    <Bar dataKey="xchangeSell" name="Xchange sell" stackId="activity" fill={products.xchangeSell} />
-                    <Bar dataKey="bills" name="Bills" stackId="activity" fill={products.bills} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="xchangeSell" name="Xchange sell" stackId="activity" fill={products.xchangeSell} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -596,8 +702,8 @@ export default function App() {
           <div className="panel reveal" style={{ ['--stagger' as string]: '16' }}>
             <div className="panel-header">
               <div>
-                <h2>Daily product volume</h2>
-                <p className="caption">USD volume by product</p>
+                <h2>Product volume</h2>
+                <p className="caption">{overviewWindow.caption}</p>
               </div>
             </div>
             <div className="chart-wrap tall">
@@ -605,7 +711,7 @@ export default function App() {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={productVolumeSeries}>
                     <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} />
                     <YAxis tick={tick} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatUsd(value)} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
                     <Legend wrapperStyle={legendStyle(colors)} formatter={(value) => categoryLabel(String(value))} />
@@ -613,7 +719,6 @@ export default function App() {
                     <Area type="monotone" dataKey="bridge" name="Bridge" stackId="volume" stroke={products.bridge} fill={products.bridge} fillOpacity={0.22} />
                     <Area type="monotone" dataKey="xchangeBuy" name="Xchange buy" stackId="volume" stroke={products.xchangeBuy} fill={products.xchangeBuy} fillOpacity={0.22} />
                     <Area type="monotone" dataKey="xchangeSell" name="Xchange sell" stackId="volume" stroke={products.xchangeSell} fill={products.xchangeSell} fillOpacity={0.22} />
-                    <Area type="monotone" dataKey="bills" name="Bills" stackId="volume" stroke={products.bills} fill={products.bills} fillOpacity={0.22} />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -626,15 +731,15 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <h2>Volume and fees</h2>
-                <p className="caption">Total volume vs platform fees</p>
+                <p className="caption">{overviewWindow.caption}</p>
               </div>
             </div>
             <div className="chart-wrap tall">
-              {moneySeries.some((row) => row.volumeUsd > 0 || row.feeUsd > 0) ? (
+              {moneySeries.some((row) => Number(row.volumeUsd) > 0 || Number(row.feeUsd) > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={moneySeries}>
                     <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} />
                     <YAxis tick={tick} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatUsd(value)} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
                     <Legend wrapperStyle={legendStyle(colors)} formatter={(value) => categoryLabel(String(value))} />
@@ -649,119 +754,13 @@ export default function App() {
           </div>
         </section>
 
-        <p className="section-label reveal" style={{ ['--stagger' as string]: '18' }}>Product detail</p>
-        <section className="panel-grid three">
-          <div className="panel reveal" style={{ ['--stagger' as string]: '19' }}>
-            <div className="panel-header">
-              <div>
-                <h2>Swap activity</h2>
-                <p className="caption">Daily swap count</p>
-              </div>
-            </div>
-            <div className="chart-wrap">
-              {mapSeries(summary?.series.swapByDay).some((row) => row.value > 0) ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={mapSeries(summary?.series.swapByDay)}>
-                    <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tick={axisTick(colors, 10)} axisLine={false} tickLine={false} />
-                    <YAxis tick={axisTick(colors, 10)} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={tooltipStyle} />
-                    <Bar dataKey="value" name="Swap" fill={products.swap} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <ChartEmpty message="No swaps yet." />
-              )}
-            </div>
-          </div>
-
-          <div className="panel reveal" style={{ ['--stagger' as string]: '20' }}>
-            <div className="panel-header">
-              <div>
-                <h2>Bridge activity</h2>
-                <p className="caption">Daily bridge count</p>
-              </div>
-            </div>
-            <div className="chart-wrap">
-              {mapSeries(summary?.series.bridgeByDay).some((row) => row.value > 0) ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={mapSeries(summary?.series.bridgeByDay)}>
-                    <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tick={axisTick(colors, 10)} axisLine={false} tickLine={false} />
-                    <YAxis tick={axisTick(colors, 10)} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={tooltipStyle} />
-                    <Bar dataKey="value" name="Bridge" fill={products.bridge} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <ChartEmpty message="No bridges yet." />
-              )}
-            </div>
-          </div>
-
-          <div className="panel reveal" style={{ ['--stagger' as string]: '21' }}>
-            <div className="panel-header">
-              <div>
-                <h2>Bills activity</h2>
-                <p className="caption">Daily bills payments</p>
-              </div>
-            </div>
-            <div className="chart-wrap">
-              {mapSeries(summary?.series.billsByDay).some((row) => row.value > 0) ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={mapSeries(summary?.series.billsByDay)}>
-                    <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tick={axisTick(colors, 10)} axisLine={false} tickLine={false} />
-                    <YAxis tick={axisTick(colors, 10)} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={tooltipStyle} />
-                    <Bar dataKey="value" name="Bills" fill={products.bills} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <ChartEmpty message="No bills yet." />
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="panel-grid two-equal">
-          <div className="panel reveal" style={{ ['--stagger' as string]: '22' }}>
-            <div className="panel-header">
-              <div>
-                <h2>Xchange buy vs sell</h2>
-                <p className="caption">Daily Xchange counts</p>
-              </div>
-            </div>
-            <div className="chart-wrap">
-              {(summary?.series.xchangeBuyByDay || []).some((row, index) => row.value > 0 || (summary?.series.xchangeSellByDay[index]?.value ?? 0) > 0) ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={(summary?.series.xchangeBuyByDay || []).map((point, index) => ({
-                      day: shortDay(point.day),
-                      buy: point.value,
-                      sell: summary?.series.xchangeSellByDay[index]?.value ?? 0,
-                    }))}
-                  >
-                    <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
-                    <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={tooltipStyle} />
-                    <Legend wrapperStyle={legendStyle(colors)} formatter={(value) => categoryLabel(String(value))} />
-                    <Bar dataKey="buy" name="Xchange buy" fill={products.xchangeBuy} radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="sell" name="Xchange sell" fill={products.xchangeSell} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <ChartEmpty message="No Xchange activity yet." />
-              )}
-            </div>
-          </div>
-
-          <div className="panel reveal" style={{ ['--stagger' as string]: '23' }}>
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '18' }}>Xchange mix</p>
+        <section className="panel-grid">
+          <div className="panel full reveal" style={{ ['--stagger' as string]: '23' }}>
             <div className="panel-header">
               <div>
                 <h2>Xchange mix</h2>
-                <p className="caption">Buy vs sell share</p>
+                <p className="caption">Buy vs sell share in loaded history</p>
               </div>
             </div>
             <div className="chart-wrap">
@@ -812,37 +811,7 @@ export default function App() {
         </section>
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '25' }}>Downloads</p>
-        <section className="panel-grid three">
-          <div className="panel reveal" style={{ ['--stagger' as string]: '26' }}>
-            <div className="panel-header">
-              <div>
-                <h2>Play Store downloads</h2>
-                <p className="caption">{formatNumber(playStoreDownloadTotal)} total installs from Google Play</p>
-              </div>
-            </div>
-            <div className="chart-wrap tall">
-              {playStoreDownloadHistory.some((row) => row.downloads > 0) ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={playStoreDownloadHistory}>
-                    <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
-                    <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatNumber(value)} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
-                    <Legend wrapperStyle={legendStyle(colors)} />
-                    <Line type="monotone" dataKey="downloads" name="Play Store" stroke={colors.chart.primary} strokeWidth={2.25} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <ChartEmpty message="No Play Store snapshots yet. Tap Sync Play Store to pull the latest public count, or record it from Play Console." />
-              )}
-            </div>
-            <div className="downloads-row">
-              <button className="btn btn-accent" type="button" onClick={() => void handleSyncPlayStore()} disabled={busyAction !== null}>
-                {busyAction === 'sync-play' ? 'Syncing…' : 'Sync Play Store'}
-              </button>
-            </div>
-          </div>
-
+        <section className="panel-grid two-equal">
           <div className="panel reveal" style={{ ['--stagger' as string]: '26' }}>
             <div className="panel-header">
               <div>
@@ -905,14 +874,13 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <h2>Transaction records</h2>
-                <p className="caption">Swap · Bridge · Xchange · Bills</p>
+                <p className="caption">Swap · Bridge · Xchange</p>
               </div>
               <select className="select" value={txFilter} onChange={(event) => setTxFilter(event.target.value as typeof txFilter)}>
                 <option value="all">All types</option>
                 <option value="swap">Swap only</option>
                 <option value="bridge">Bridge only</option>
                 <option value="xchange">Xchange only</option>
-                <option value="bills">Bills only</option>
               </select>
             </div>
 
