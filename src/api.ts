@@ -40,6 +40,7 @@ export type DashboardSummary = {
     completedTransactions: number;
     volumeUsd: number;
     feeUsd: number;
+    playStoreDownloads?: number;
     uptodownDownloads: number;
     websiteDownloads?: number;
     totalDownloads?: number;
@@ -178,13 +179,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const fetchDashboard = (days: number) =>
   request<DashboardSummary>(`/dashboard?days=${days}`);
 
-export const syncUptodownDownloads = (appUrl?: string) =>
-  request<{ downloadCount?: number }>('/downloads/sync-uptodown', {
+export const syncPlayStoreDownloads = (appUrl?: string) =>
+  request<{ downloadCount?: number }>('/downloads/sync-play-store', {
     method: 'POST',
     body: JSON.stringify(appUrl ? { appUrl } : {}),
   });
 
-export const recordDownloadCount = (downloadCount: number, source = 'uptodown') =>
+export const recordDownloadCount = (downloadCount: number, source = 'play_store') =>
   request<unknown>('/downloads', {
     method: 'POST',
     body: JSON.stringify({ source, downloadCount }),

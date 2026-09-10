@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 import {
   fetchDashboard,
-  syncUptodownDownloads,
+  syncPlayStoreDownloads,
   type DashboardSummary,
   type PieSlice,
   type SeriesPoint,
@@ -124,9 +124,9 @@ const sumTotalDownloads = (summary: DashboardSummary | null) => {
     0;
 
   return (
+    (bySource.get('play_store') ?? summary.totals.playStoreDownloads ?? 0) +
     (bySource.get('uptodown') ?? summary.totals.uptodownDownloads ?? 0) +
     website +
-    (bySource.get('play_store') ?? 0) +
     (bySource.get('app_store') ?? 0) +
     (bySource.get('other') ?? 0)
   );
@@ -379,8 +379,8 @@ export default function App() {
     }));
   }, [summary]);
 
-  const uptodownDownloadHistory = useMemo(
-    () => buildDownloadHistoryFromSources(summary, ['uptodown']),
+  const playStoreDownloadHistory = useMemo(
+    () => buildDownloadHistoryFromSources(summary, ['play_store', 'uptodown']),
     [summary],
   );
 
@@ -389,8 +389,11 @@ export default function App() {
     [summary],
   );
 
+  const playStoreLatest = summary?.downloads.latestBySource.find((row) => row.source === 'play_store');
   const uptodownLatest = summary?.downloads.latestBySource.find((row) => row.source === 'uptodown');
-  const uptodownDownloadTotal =
+  const playStoreDownloadTotal =
+    playStoreLatest?.downloadCount ??
+    summary?.totals.playStoreDownloads ??
     uptodownLatest?.downloadCount ??
     summary?.totals.uptodownDownloads ??
     0;
@@ -405,14 +408,14 @@ export default function App() {
 
   const totalDownloadTotal = useMemo(() => sumTotalDownloads(summary), [summary]);
 
-  const handleSyncUptodown = async () => {
+  const handleSyncPlayStore = async () => {
     setBusyAction('sync');
     setError(null);
     try {
-      await syncUptodownDownloads();
+      await syncPlayStoreDownloads();
       await loadDashboard(days);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Uptodown sync failed');
+      setError(err instanceof Error ? err.message : 'Play Store sync failed');
     } finally {
       setBusyAction(null);
     }
@@ -495,8 +498,8 @@ export default function App() {
           <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" stagger={4} />
           <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" stagger={5} />
           <MetricCard label="Total downloads" value={formatNumber(totalDownloadTotal)} hint="All platforms combined" stagger={6} />
-          <MetricCard label="Uptodown downloads" value={formatNumber(uptodownDownloadTotal)} hint="Latest Uptodown snapshot" stagger={7} />
-          <MetricCard label="Website downloads" value={formatNumber(websiteDownloadTotal)} hint="Direct APK via doxawallet.com" stagger={8} />
+          <MetricCard label="Play Store downloads" value={formatNumber(playStoreDownloadTotal)} hint="Google Play listing" stagger={7} />
+          <MetricCard label="Website downloads" value={formatNumber(websiteDownloadTotal)} hint="Historical APK via doxawallet.com" stagger={8} />
         </section>
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '9' }}>Products</p>
@@ -786,29 +789,29 @@ export default function App() {
           <div className="panel reveal" style={{ ['--stagger' as string]: '26' }}>
             <div className="panel-header">
               <div>
-                <h2>Uptodown downloads</h2>
-                <p className="caption">{formatNumber(uptodownDownloadTotal)} total installs from Uptodown</p>
+                <h2>Play Store downloads</h2>
+                <p className="caption">{formatNumber(playStoreDownloadTotal)} total installs from Google Play</p>
               </div>
             </div>
             <div className="chart-wrap tall">
-              {uptodownDownloadHistory.some((row) => row.downloads > 0) ? (
+              {playStoreDownloadHistory.some((row) => row.downloads > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={uptodownDownloadHistory}>
+                  <LineChart data={playStoreDownloadHistory}>
                     <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
                     <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
                     <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatNumber(value)} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
                     <Legend wrapperStyle={legendStyle(colors)} />
-                    <Line type="monotone" dataKey="downloads" name="Uptodown" stroke={colors.chart.primary} strokeWidth={2.25} dot={false} />
+                    <Line type="monotone" dataKey="downloads" name="Play Store" stroke={colors.chart.primary} strokeWidth={2.25} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <ChartEmpty message="No Uptodown snapshots yet. Tap Sync Uptodown to pull the latest count." />
+                <ChartEmpty message="No Play Store snapshots yet. Tap Sync Play Store to pull the latest public count, or record it from Play Console." />
               )}
             </div>
             <div className="downloads-row">
-              <button className="btn btn-accent" type="button" onClick={() => void handleSyncUptodown()} disabled={busyAction !== null}>
-                {busyAction === 'sync' ? 'Syncing…' : 'Sync Uptodown'}
+              <button className="btn btn-accent" type="button" onClick={() => void handleSyncPlayStore()} disabled={busyAction !== null}>
+                {busyAction === 'sync' ? 'Syncing…' : 'Sync Play Store'}
               </button>
             </div>
           </div>
@@ -817,7 +820,7 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <h2>Website downloads</h2>
-                <p className="caption">{formatNumber(websiteDownloadTotal)} completed APK downloads via doxawallet.com</p>
+                <p className="caption">{formatNumber(websiteDownloadTotal)} completed APK downloads via doxawallet.com (before Play Store redirect)</p>
               </div>
             </div>
             <div className="chart-wrap tall">
