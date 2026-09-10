@@ -185,6 +185,12 @@ export const syncPlayStoreDownloads = (appUrl?: string) =>
     body: JSON.stringify(appUrl ? { appUrl } : {}),
   });
 
+export const syncUptodownDownloads = (appUrl?: string) =>
+  request<{ downloadCount?: number }>('/downloads/sync-uptodown', {
+    method: 'POST',
+    body: JSON.stringify(appUrl ? { appUrl } : {}),
+  });
+
 export const recordDownloadCount = (downloadCount: number, source = 'play_store') =>
   request<unknown>('/downloads', {
     method: 'POST',

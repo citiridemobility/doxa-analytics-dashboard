@@ -19,6 +19,7 @@ import {
 import {
   fetchDashboard,
   syncPlayStoreDownloads,
+  syncUptodownDownloads,
   type DashboardSummary,
   type PieSlice,
   type SeriesPoint,
@@ -380,7 +381,12 @@ export default function App() {
   }, [summary]);
 
   const playStoreDownloadHistory = useMemo(
-    () => buildDownloadHistoryFromSources(summary, ['play_store', 'uptodown']),
+    () => buildDownloadHistoryFromSources(summary, ['play_store']),
+    [summary],
+  );
+
+  const uptodownDownloadHistory = useMemo(
+    () => buildDownloadHistoryFromSources(summary, ['uptodown']),
     [summary],
   );
 
@@ -394,6 +400,8 @@ export default function App() {
   const playStoreDownloadTotal =
     playStoreLatest?.downloadCount ??
     summary?.totals.playStoreDownloads ??
+    0;
+  const uptodownDownloadTotal =
     uptodownLatest?.downloadCount ??
     summary?.totals.uptodownDownloads ??
     0;
@@ -409,13 +417,26 @@ export default function App() {
   const totalDownloadTotal = useMemo(() => sumTotalDownloads(summary), [summary]);
 
   const handleSyncPlayStore = async () => {
-    setBusyAction('sync');
+    setBusyAction('sync-play');
     setError(null);
     try {
       await syncPlayStoreDownloads();
       await loadDashboard(days);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Play Store sync failed');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleSyncUptodown = async () => {
+    setBusyAction('sync-uptodown');
+    setError(null);
+    try {
+      await syncUptodownDownloads();
+      await loadDashboard(days);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Uptodown sync failed');
     } finally {
       setBusyAction(null);
     }
@@ -497,9 +518,12 @@ export default function App() {
           <MetricCard label="Transactions" value={formatNumber(summary?.totals.transactions ?? 0)} hint={`${formatNumber(summary?.totals.completedTransactions ?? 0)} completed`} stagger={3} />
           <MetricCard label="Total volume" value={formatUsd(summary?.totals.volumeUsd ?? 0)} hint="All products" stagger={4} />
           <MetricCard label="Fees generated" value={formatUsd(summary?.totals.feeUsd ?? 0)} hint="Platform fees" stagger={5} />
-          <MetricCard label="Total downloads" value={formatNumber(totalDownloadTotal)} hint="All platforms combined" stagger={6} />
+        </section>
+        <section className="metrics-grid">
+          <MetricCard label="Total downloads" value={formatNumber(totalDownloadTotal)} hint="Play Store + Uptodown + website" stagger={6} />
           <MetricCard label="Play Store downloads" value={formatNumber(playStoreDownloadTotal)} hint="Google Play listing" stagger={7} />
-          <MetricCard label="Website downloads" value={formatNumber(websiteDownloadTotal)} hint="Historical APK via doxawallet.com" stagger={8} />
+          <MetricCard label="Uptodown downloads" value={formatNumber(uptodownDownloadTotal)} hint="Latest Uptodown snapshot" stagger={8} />
+          <MetricCard label="Website downloads" value={formatNumber(websiteDownloadTotal)} hint="Historical APK via doxawallet.com" stagger={9} />
         </section>
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '9' }}>Products</p>
@@ -761,8 +785,8 @@ export default function App() {
         </section>
 
         <p className="section-label reveal" style={{ ['--stagger' as string]: '24' }}>Network and distribution</p>
-        <section className="panel-grid two-equal">
-          <div className="panel reveal" style={{ ['--stagger' as string]: '25' }}>
+        <section className="panel-grid">
+          <div className="panel full reveal" style={{ ['--stagger' as string]: '25' }}>
             <div className="panel-header">
               <div>
                 <h2>Network distribution</h2>
@@ -785,7 +809,10 @@ export default function App() {
               )}
             </div>
           </div>
+        </section>
 
+        <p className="section-label reveal" style={{ ['--stagger' as string]: '25' }}>Downloads</p>
+        <section className="panel-grid three">
           <div className="panel reveal" style={{ ['--stagger' as string]: '26' }}>
             <div className="panel-header">
               <div>
@@ -811,7 +838,37 @@ export default function App() {
             </div>
             <div className="downloads-row">
               <button className="btn btn-accent" type="button" onClick={() => void handleSyncPlayStore()} disabled={busyAction !== null}>
-                {busyAction === 'sync' ? 'Syncing…' : 'Sync Play Store'}
+                {busyAction === 'sync-play' ? 'Syncing…' : 'Sync Play Store'}
+              </button>
+            </div>
+          </div>
+
+          <div className="panel reveal" style={{ ['--stagger' as string]: '26' }}>
+            <div className="panel-header">
+              <div>
+                <h2>Uptodown downloads</h2>
+                <p className="caption">{formatNumber(uptodownDownloadTotal)} total installs from Uptodown</p>
+              </div>
+            </div>
+            <div className="chart-wrap tall">
+              {uptodownDownloadHistory.some((row) => row.downloads > 0) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={uptodownDownloadHistory}>
+                    <CartesianGrid stroke={colors.border.secondary} vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="day" tick={tick} axisLine={false} tickLine={false} />
+                    <YAxis tick={tick} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => formatNumber(value)} labelStyle={{ fontFamily: FONT_FAMILY, fontWeight: 600 }} itemStyle={{ fontFamily: FONT_FAMILY }} />
+                    <Legend wrapperStyle={legendStyle(colors)} />
+                    <Line type="monotone" dataKey="downloads" name="Uptodown" stroke={colors.chart.primary} strokeWidth={2.25} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <ChartEmpty message="No Uptodown snapshots yet. Tap Sync Uptodown to pull the latest count." />
+              )}
+            </div>
+            <div className="downloads-row">
+              <button className="btn btn-accent" type="button" onClick={() => void handleSyncUptodown()} disabled={busyAction !== null}>
+                {busyAction === 'sync-uptodown' ? 'Syncing…' : 'Sync Uptodown'}
               </button>
             </div>
           </div>
@@ -820,7 +877,7 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <h2>Website downloads</h2>
-                <p className="caption">{formatNumber(websiteDownloadTotal)} completed APK downloads via doxawallet.com (before Play Store redirect)</p>
+                <p className="caption">{formatNumber(websiteDownloadTotal)} completed APK downloads via doxawallet.com</p>
               </div>
             </div>
             <div className="chart-wrap tall">
